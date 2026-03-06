@@ -1213,12 +1213,6 @@ Cancel a scheduled break.
 **Params:** none
 **Returns:** `{"ok": true}`
 
-#### `get_navigation_archive`
-Get the navigation mesh archive.
-
-**Params:** none
-**Returns:** `{"data": <binary>, "size": 65536}`
-
 ---
 
 ### Config Type Lookups
@@ -1549,7 +1543,7 @@ pipe_server/src/
     ├── component_handlers.cpp  # UI component and interface queries
     ├── var_handlers.cpp        # Varp, varbit, varc reads
     ├── script_handlers.cpp     # Client script execution
-    ├── game_handlers.cpp       # Cache, world, login state, auto login, navigation, streaming
+    ├── game_handlers.cpp       # Cache, world, login state, auto login, streaming
     ├── inventory_handlers.cpp  # Inventories, items, stats, chat
     └── config_handlers.cpp     # Config type lookups (item, npc, location, enum, struct, sequence, quest)
 ```
