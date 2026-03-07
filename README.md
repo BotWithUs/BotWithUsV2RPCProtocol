@@ -78,8 +78,10 @@ The server discovers pipes matching `\\.\pipe\BotWithUs_*` on startup. With exac
 | `get_entity_health` | Current and max health |
 | `get_entity_position` | Tile position |
 | `get_entity_animation` | Current animation ID |
+| `get_animation_length` | Length of an animation sequence in ticks |
 | `get_entity_hitmarks` | Active damage splats |
 | `get_entity_overhead_text` | Overhead chat text |
+| `get_entity_screen_positions` | Screen positions for multiple entities |
 | `is_entity_valid` | Check if handle is still valid |
 
 ### UI Components & Interfaces
@@ -107,12 +109,14 @@ The server discovers pipes matching `\\.\pipe\BotWithUs_*` on startup. With exac
 | `get_inventory_item` | Item at specific slot |
 | `get_item_vars` | Item variables for a slot |
 | `get_item_var_value` | Specific item variable value |
+| `get_obj_stack_items` | Items within a ground stack by handle |
 
 ### Game State
 
 | Tool | Description |
 |------|-------------|
 | `get_local_player` | Local player info (position, health, animation) |
+| `get_account_info` | Account details (display name, member status, run energy) |
 | `get_game_cycle` | Current game tick counter |
 | `get_login_state` | Login state, progress, status |
 | `get_mini_menu` | Current right-click menu entries |
@@ -179,6 +183,11 @@ These tools modify game state. They are prefixed `[UNSAFE]` in their description
 |------|-------------|
 | `set_world` | Set target world for login/hop |
 | `change_login_state` | Change login state machine |
+| `login_to_lobby` | Login from login screen to lobby |
+| `get_auto_login` | Check if auto login is enabled |
+| `set_auto_login` | Enable/disable auto login |
+| `get_humanization_enabled` | Check if input humanization is enabled |
+| `set_humanization_enabled` | Enable/disable input humanization |
 | `schedule_break` | Schedule logout break (ms) |
 | `interrupt_break` | Cancel scheduled break |
 

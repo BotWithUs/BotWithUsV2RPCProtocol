@@ -1211,6 +1211,49 @@ def interrupt_break() -> dict:
 
 
 @mcp.tool()
+def login_to_lobby() -> dict:
+    """[UNSAFE] Trigger login from the login screen to lobby. Only works when client state is 10 (login screen).
+
+    Returns ok:true on success, or an error if not on login screen, login already in progress, or account unavailable.
+    """
+    return rpc("login_to_lobby")
+
+
+@mcp.tool()
+def get_auto_login() -> dict:
+    """Check if auto login is enabled."""
+    return rpc("get_auto_login")
+
+
+@mcp.tool()
+def set_auto_login(enabled: bool) -> dict:
+    """[UNSAFE] Enable or disable auto login.
+
+    Args:
+        enabled: Whether to enable auto login.
+    """
+    return rpc("set_auto_login", enabled=enabled)
+
+
+@mcp.tool()
+def get_humanization_enabled() -> dict:
+    """Check if input humanization (mouse paths, fatigue model, break recommendations) is enabled."""
+    return rpc("get_humanization_enabled")
+
+
+@mcp.tool()
+def set_humanization_enabled(enabled: bool) -> dict:
+    """[UNSAFE] Enable or disable input humanization (mouse path generation, fatigue/risk model, automatic break recommendations).
+
+    Humanization is disabled by default.
+
+    Args:
+        enabled: Whether to enable humanization.
+    """
+    return rpc("set_humanization_enabled", enabled=enabled)
+
+
+@mcp.tool()
 def execute_script(handle: int, int_args: list[int] = [], string_args: list[str] = [],
                    returns: list[str] = []) -> dict:
     """[UNSAFE] Execute a client script by handle.
@@ -1273,6 +1316,9 @@ UNSAFE_TOOLS = [
     "set_actions_blocked",
     "set_world",
     "change_login_state",
+    "login_to_lobby",
+    "set_auto_login",
+    "set_humanization_enabled",
     "schedule_break",
     "interrupt_break",
     "execute_script",

@@ -1184,6 +1184,18 @@ Change the login state machine state.
 
 **Returns:** `{"ok": true}`
 
+#### `login_to_lobby`
+Trigger a login from the login screen to lobby by executing the lobby login script (CS2 15259). Only works when client state is 10 (login screen). Checks for login progress, account status, and stale game sessions before attempting.
+
+**Params:** none
+**Returns:** `{"ok": true}`
+
+**Errors:**
+- `{"error": "not_on_login_screen", "state": <int>}` — client is not on the login screen (state != 10)
+- `{"error": "login_in_progress"}` — a login attempt is already underway
+- `{"error": "account_unavailable", "login_status": <int>}` — account is disabled or locked
+- `{"ok": true, "action": "new_game_session"}` — previous session ended; a new game session was requested (caller should retry after a delay)
+
 #### `get_auto_login`
 Check if auto login is enabled.
 
@@ -1198,6 +1210,23 @@ Enable or disable auto login.
 | Field     | Type | Required | Description                  |
 |-----------|------|----------|------------------------------|
 | `enabled` | bool | yes      | Whether to enable auto login |
+
+**Returns:** `{"ok": true}`
+
+#### `get_humanization_enabled`
+Check if input humanization (mouse path generation, fatigue/risk model, automatic break recommendations) is enabled. Disabled by default.
+
+**Params:** none
+**Returns:** `{"enabled": false}`
+
+#### `set_humanization_enabled`
+Enable or disable input humanization. When disabled, mouse path generation is skipped (clicks are sent directly), and the fatigue/risk model will not trigger automatic break recommendations. Mouse click injection still works regardless of this setting.
+
+**Params:**
+
+| Field     | Type | Required | Description                        |
+|-----------|------|----------|------------------------------------|
+| `enabled` | bool | yes      | Whether to enable humanization     |
 
 **Returns:** `{"ok": true}`
 
