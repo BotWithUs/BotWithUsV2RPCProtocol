@@ -171,767 +171,382 @@ def list_methods() -> list:
     return rpc("rpc.list_methods")
 
 
-# ── Entity Queries ────────────────────────────────────────────────────
-
-
 @mcp.tool()
-def query_npcs(
-    radius: Optional[int] = None,
-    tile_x: int = 0, tile_y: int = 0,
-    plane: int = -1,
-    type_id: int = -1,
-    name_pattern: Optional[str] = None,
-    match_type: str = "contains",
-    case_sensitive: bool = False,
-    visible_only: bool = False,
-    in_combat: bool = False,
-    not_in_combat: bool = False,
-    option_pattern: Optional[str] = None,
-    option_match_type: str = "contains",
-    sort_by_distance: bool = False,
-    max_results: int = 0,
-) -> list:
-    """Query NPCs in the game world.
+def call_rpc(method: str, params: Optional[dict] = None) -> object:
+    """Escape hatch — call any RPC method by name with arbitrary params.
 
-    Returns list of NPCs with handle, server_index, type_id, tile_x, tile_y, name, etc.
-    Use handle with get_entity_info/get_entity_health for details.
+    Use this when:
+    - A method's signature isn't yet known and you want to probe it.
+    - You need a server-side method that doesn't have a typed wrapper yet.
+    - You hit "method not found" via a typed wrapper and want to verify it
+      against rpc.list_methods.
 
     Args:
-        radius: Max distance in tiles from (tile_x, tile_y). Omit for no spatial filter.
-        tile_x: Center X tile for radius/distance sorting.
-        tile_y: Center Y tile for radius/distance sorting.
-        plane: Filter to specific game plane (-1 = any).
-        type_id: Filter by NPC type ID (-1 = any).
-        name_pattern: Filter by name string.
-        match_type: How to match name: exact, prefix, suffix, contains, regex.
-        visible_only: Only return visible NPCs.
-        in_combat: Only NPCs currently in combat.
-        not_in_combat: Only NPCs not in combat.
-        option_pattern: Filter by right-click option text (e.g. "Talk-to", "Attack").
-        option_match_type: How to match option: exact, prefix, suffix, contains, regex.
-        sort_by_distance: Sort results by distance from tile_x/tile_y.
-        max_results: Limit number of results (0 = unlimited).
+        method: Server-side RPC name (e.g. "get_components").
+        params: Optional parameter dict (msgpack-encoded over the wire).
     """
-    p = {"type": "npc"}
-    if radius is not None:
-        p["radius"] = radius
-    if tile_x: p["tile_x"] = tile_x
-    if tile_y: p["tile_y"] = tile_y
-    if plane >= 0: p["plane"] = plane
-    if type_id >= 0: p["type_id"] = type_id
-    if name_pattern: p["name_pattern"] = name_pattern
-    if match_type != "contains": p["match_type"] = match_type
-    if case_sensitive: p["case_sensitive"] = True
-    if visible_only: p["visible_only"] = True
-    if in_combat: p["in_combat"] = True
-    if not_in_combat: p["not_in_combat"] = True
-    if option_pattern: p["option_pattern"] = option_pattern
-    if option_match_type != "contains": p["option_match_type"] = option_match_type
-    if sort_by_distance: p["sort_by_distance"] = True
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_entities", **p)
+    return rpc(method, **(params or {}))
+
+
+# ── Components / UI (NEW tree API) ────────────────────────────────────
 
 
 @mcp.tool()
-def query_players(
-    radius: Optional[int] = None,
-    tile_x: int = 0, tile_y: int = 0,
-    plane: int = -1,
-    name_pattern: Optional[str] = None,
-    match_type: str = "contains",
-    in_combat: bool = False,
-    sort_by_distance: bool = False,
-    max_results: int = 0,
-) -> list:
-    """Query players in the game world.
+def get_component(
+    interface_id: int,
+    component_id: int,
+    sub_component_id: int = -1,
+) -> dict:
+    """Look up a single component by (interface, component, sub) tuple.
 
-    Returns list of players with handle, server_index, type_id, tile_x, tile_y, name, etc.
-
-    Args:
-        radius: Max distance in tiles from (tile_x, tile_y).
-        tile_x: Center X tile for radius/distance sorting.
-        tile_y: Center Y tile for radius/distance sorting.
-        plane: Filter to specific game plane (-1 = any).
-        name_pattern: Filter by player name.
-        match_type: How to match name: exact, prefix, suffix, contains, regex.
-        in_combat: Only players currently in combat.
-        sort_by_distance: Sort results by distance from tile_x/tile_y.
-        max_results: Limit number of results (0 = unlimited).
+    Returns a node descriptor (handle, type, item_id, sprite_id, text, options, …).
     """
-    p = {"type": "player"}
-    if radius is not None:
-        p["radius"] = radius
-    if tile_x: p["tile_x"] = tile_x
-    if tile_y: p["tile_y"] = tile_y
-    if plane >= 0: p["plane"] = plane
-    if name_pattern: p["name_pattern"] = name_pattern
-    if match_type != "contains": p["match_type"] = match_type
-    if in_combat: p["in_combat"] = True
-    if sort_by_distance: p["sort_by_distance"] = True
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_entities", **p)
+    p = {"interface_id": interface_id, "component_id": component_id}
+    if sub_component_id >= 0:
+        p["sub_component_id"] = sub_component_id
+    return rpc("get_component", **p)
 
 
 @mcp.tool()
-def query_locations(
-    radius: Optional[int] = None,
-    tile_x: int = 0, tile_y: int = 0,
-    plane: int = -1,
-    type_id: int = -1,
-    name_pattern: Optional[str] = None,
-    match_type: str = "contains",
-    option_pattern: Optional[str] = None,
-    option_match_type: str = "contains",
-    sort_by_distance: bool = False,
-    max_results: int = 0,
-) -> list:
-    """Query game objects/locations (doors, trees, rocks, etc.) in the game world.
+def get_components(interface_id: int = -1) -> list:
+    """List components, optionally filtered to one interface.
 
-    Returns list with handle, type_id, tile_x, tile_y, name, options, name_hash.
-
-    Args:
-        radius: Max distance in tiles from (tile_x, tile_y).
-        tile_x: Center X tile for radius/distance sorting.
-        tile_y: Center Y tile for radius/distance sorting.
-        plane: Filter to specific game plane (-1 = any).
-        type_id: Filter by location type ID (-1 = any).
-        name_pattern: Filter by name string.
-        match_type: How to match name: exact, prefix, suffix, contains, regex.
-        option_pattern: Filter by right-click option text (e.g. "Chop down", "Mine").
-        option_match_type: How to match option: exact, prefix, suffix, contains, regex.
-        sort_by_distance: Sort results by distance from tile_x/tile_y.
-        max_results: Limit number of results (0 = unlimited).
-    """
-    p = {"type": "location"}
-    if radius is not None:
-        p["radius"] = radius
-    if tile_x: p["tile_x"] = tile_x
-    if tile_y: p["tile_y"] = tile_y
-    if plane >= 0: p["plane"] = plane
-    if type_id >= 0: p["type_id"] = type_id
-    if name_pattern: p["name_pattern"] = name_pattern
-    if match_type != "contains": p["match_type"] = match_type
-    if option_pattern: p["option_pattern"] = option_pattern
-    if option_match_type != "contains": p["option_match_type"] = option_match_type
-    if sort_by_distance: p["sort_by_distance"] = True
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_entities", **p)
-
-
-@mcp.tool()
-def query_ground_items(
-    radius: Optional[int] = None,
-    tile_x: int = 0, tile_y: int = 0,
-    plane: int = -1,
-    sort_by_distance: bool = False,
-    max_results: int = 0,
-) -> list:
-    """Query ground items (dropped items on the floor).
-
-    Returns list with handle, tile_x, tile_y, and items array [{item_id, quantity}, ...].
-
-    Args:
-        radius: Max distance in tiles from (tile_x, tile_y).
-        tile_x: Center X tile for radius/distance sorting.
-        tile_y: Center Y tile for radius/distance sorting.
-        plane: Filter to specific game plane (-1 = any).
-        sort_by_distance: Sort results by distance from tile_x/tile_y.
-        max_results: Limit number of results (0 = unlimited).
+    Replacement for the old `query_components` — the live server's
+    component API is tree-based; this returns a flat snapshot.
     """
     p = {}
-    if radius is not None:
-        p["radius"] = radius
-    if tile_x: p["tile_x"] = tile_x
-    if tile_y: p["tile_y"] = tile_y
-    if plane >= 0: p["plane"] = plane
-    if sort_by_distance: p["sort_by_distance"] = True
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_ground_items", **p)
+    if interface_id >= 0:
+        p["interface_id"] = interface_id
+    return rpc("get_components", **p)
 
 
 @mcp.tool()
-def query_entities(
-    type: str,
-    radius: Optional[int] = None,
-    tile_x: int = 0, tile_y: int = 0,
-    plane: int = -1,
-    type_id: int = -1,
-    name_pattern: Optional[str] = None,
-    match_type: str = "contains",
-    case_sensitive: bool = False,
-    visible_only: bool = False,
-    moving_only: bool = False,
-    stationary_only: bool = False,
-    in_combat: bool = False,
-    not_in_combat: bool = False,
-    option_pattern: Optional[str] = None,
-    option_match_type: str = "contains",
-    sort_by_distance: bool = False,
-    max_results: int = 0,
-) -> list:
-    """Generic entity query. Prefer query_npcs/query_players/query_locations for typed queries.
+def get_static_children(interface_id: int, component_id: int = -1) -> list:
+    """Static (compile-time) children of a component or interface root.
 
-    Args:
-        type: Entity type - "npc", "player", "location", or "obj_stack".
-        radius: Max distance in tiles from (tile_x, tile_y).
-        tile_x: Center X tile for radius/distance sorting.
-        tile_y: Center Y tile for radius/distance sorting.
-        plane: Filter to specific game plane (-1 = any).
-        type_id: Filter by entity type ID (-1 = any).
-        name_pattern: Filter by name string.
-        match_type: How to match name: exact, prefix, suffix, contains, regex.
-        case_sensitive: Case sensitive name matching.
-        visible_only: Only visible entities.
-        moving_only: Only moving entities.
-        stationary_only: Only stationary entities.
-        in_combat: Only entities in combat.
-        not_in_combat: Only entities not in combat.
-        option_pattern: Filter by right-click option text (NPC/location only).
-        option_match_type: How to match option: exact, prefix, suffix, contains, regex.
-        sort_by_distance: Sort by distance from tile_x/tile_y.
-        max_results: Limit results (0 = unlimited).
+    Pass component_id = -1 to fetch the interface's top-level static children.
     """
-    p = {"type": type}
-    if radius is not None: p["radius"] = radius
-    if tile_x: p["tile_x"] = tile_x
-    if tile_y: p["tile_y"] = tile_y
-    if plane >= 0: p["plane"] = plane
-    if type_id >= 0: p["type_id"] = type_id
-    if name_pattern: p["name_pattern"] = name_pattern
-    if match_type != "contains": p["match_type"] = match_type
-    if case_sensitive: p["case_sensitive"] = True
-    if visible_only: p["visible_only"] = True
-    if moving_only: p["moving_only"] = True
-    if stationary_only: p["stationary_only"] = True
-    if in_combat: p["in_combat"] = True
-    if not_in_combat: p["not_in_combat"] = True
-    if option_pattern: p["option_pattern"] = option_pattern
-    if option_match_type != "contains": p["option_match_type"] = option_match_type
-    if sort_by_distance: p["sort_by_distance"] = True
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_entities", **p)
-
-
-# ── Entity Details ────────────────────────────────────────────────────
+    p = {"interface_id": interface_id}
+    if component_id >= 0:
+        p["component_id"] = component_id
+    return rpc("get_static_children", **p)
 
 
 @mcp.tool()
-def get_entity_info(handle: int) -> dict:
-    """Get full info for an NPC or player by handle.
-
-    Returns: handle, server_index, type_id, tile_x, tile_y, tile_z, name, name_hash,
-    is_moving, is_hidden, animation_id, stance_id, health, max_health, following_index,
-    overhead_text, combat_level.
-    """
-    return rpc("get_entity_info", handle=handle)
+def get_dynamic_children(interface_id: int, component_id: int = -1) -> list:
+    """Dynamic (runtime-generated) children — e.g. inventory grid items."""
+    p = {"interface_id": interface_id}
+    if component_id >= 0:
+        p["component_id"] = component_id
+    return rpc("get_dynamic_children", **p)
 
 
 @mcp.tool()
-def get_entity_name(handle: int) -> dict:
-    """Get the name of an entity by handle. Returns {"name": "..."}."""
-    return rpc("get_entity_name", handle=handle)
+def get_interface_tree(interface_id: int) -> dict:
+    """Dump the full component tree for an interface."""
+    return rpc("get_interface_tree", interface_id=interface_id)
 
 
 @mcp.tool()
-def get_entity_health(handle: int) -> dict:
-    """Get current and max health of an entity. Returns {"health": int, "max_health": int}."""
-    return rpc("get_entity_health", handle=handle)
+def find_component_at(x: int, y: int) -> dict:
+    """Find the topmost component under screen coordinates (x, y)."""
+    return rpc("find_component_at", x=x, y=y)
+
+
+# ── Game state ────────────────────────────────────────────────────────
 
 
 @mcp.tool()
-def get_entity_position(handle: int) -> dict:
-    """Get tile position of an entity. Returns {"tile_x": int, "tile_y": int, "plane": int}."""
-    return rpc("get_entity_position", handle=handle)
+def get_game_cycle() -> dict:
+    """Get the current game cycle counter."""
+    return rpc("get_game_cycle")
 
 
 @mcp.tool()
-def get_entity_animation(handle: int) -> dict:
-    """Get current animation ID of an entity. Returns {"animation_id": int}."""
-    return rpc("get_entity_animation", handle=handle)
-
-
-@mcp.tool()
-def is_entity_valid(handle: int) -> dict:
-    """Check if an entity handle is still valid. Returns {"valid": bool}."""
-    return rpc("is_entity_valid", handle=handle)
-
-
-@mcp.tool()
-def get_entity_hitmarks(handle: int) -> list:
-    """Get active hitmarks (damage splats) on an entity. Returns [{damage, type, cycle}, ...]."""
-    return rpc("get_entity_hitmarks", handle=handle)
-
-
-@mcp.tool()
-def get_animation_length(animation_id: int) -> dict:
-    """Get the byte length of an animation archive. Returns {"length": int} (-1 if not found)."""
-    return rpc("get_animation_length", animation_id=animation_id)
-
-
-# ── Projectiles, Spot Anims, Hint Arrows ──────────────────────────────
-
-
-@mcp.tool()
-def query_projectiles(
-    projectile_id: int = -1,
-    plane: int = -1,
-    max_results: int = 0,
-) -> list:
-    """Query active projectiles in the game world.
-
-    Returns list with handle, projectile_id, start_x/y, end_x/y, plane,
-    target_index, source_index, start_cycle, end_cycle.
-
-    Args:
-        projectile_id: Filter by projectile ID (-1 = any).
-        plane: Filter by plane (-1 = any).
-        max_results: Limit results (0 = unlimited).
-    """
-    p = {}
-    if projectile_id >= 0: p["projectile_id"] = projectile_id
-    if plane >= 0: p["plane"] = plane
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_projectiles", **p)
-
-
-@mcp.tool()
-def query_spot_anims(
-    anim_id: int = -1,
-    plane: int = -1,
-    max_results: int = 0,
-) -> list:
-    """Query active spot animations (graphic effects at locations).
-
-    Returns list with handle, anim_id, tile_x, tile_y, tile_z.
-
-    Args:
-        anim_id: Filter by animation ID (-1 = any).
-        plane: Filter by plane (-1 = any).
-        max_results: Limit results (0 = unlimited).
-    """
-    p = {}
-    if anim_id >= 0: p["anim_id"] = anim_id
-    if plane >= 0: p["plane"] = plane
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_spot_anims", **p)
-
-
-@mcp.tool()
-def query_hint_arrows(max_results: int = 0) -> list:
-    """Query active hint arrows (tutorial/quest indicators).
-
-    Returns list with handle, type, tile_x, tile_y, tile_z, target_index.
-
-    Args:
-        max_results: Limit results (0 = unlimited).
-    """
-    p = {}
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_hint_arrows", **p)
-
-
-# ── Worlds ────────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def query_worlds(include_activity: bool = False) -> list:
-    """Query available game worlds.
-
-    Returns list with world_id, properties, population, ping.
-    Optionally includes activity string.
-
-    Args:
-        include_activity: Include the world's activity description string.
-    """
-    p = {}
-    if include_activity: p["include_activity"] = True
-    return rpc("query_worlds", **p)
+def get_login_state() -> dict:
+    """Get the current login state and progress."""
+    return rpc("get_login_state")
 
 
 @mcp.tool()
 def get_current_world() -> dict:
-    """Get the current world ID. Returns {"world_id": int} (-1 if not logged in)."""
+    """Get the current world ID."""
     return rpc("get_current_world")
 
 
 @mcp.tool()
-def compute_name_hash(name: str) -> dict:
-    """Compute the name hash for a string. Useful for name_hash entity filtering.
-
-    Args:
-        name: The name string to hash.
-    """
-    return rpc("compute_name_hash", name=name)
+def get_account_info() -> dict:
+    """Get account/session info (display_name, jx ids, logged_in, is_member, …)."""
+    return rpc("get_account_info")
 
 
-# ── Components / UI ──────────────────────────────────────────────────
-
-
-@mcp.tool()
-def query_components(
-    interface_id: int = -1,
-    item_id: int = -1,
-    sprite_id: int = -1,
-    type: int = -1,
-    text_pattern: Optional[str] = None,
-    match_type: str = "contains",
-    case_sensitive: bool = False,
-    option_pattern: Optional[str] = None,
-    visible_only: bool = False,
-    max_results: int = 0,
-) -> list:
-    """Query UI components (interface elements like buttons, text, items).
-
-    Returns list with handle, interface_id, component_id, sub_component_id,
-    type, item_id, item_count, sprite_id.
-
-    Args:
-        interface_id: Filter to specific interface (-1 = any).
-        item_id: Filter by item ID shown in component (-1 = any).
-        sprite_id: Filter by sprite ID (-1 = any).
-        type: Filter by component type byte (-1 = any).
-        text_pattern: Filter by text content.
-        match_type: How to match text: exact, contains, regex.
-        case_sensitive: Case sensitive text matching.
-        option_pattern: Filter by right-click option text.
-        visible_only: Only visible components.
-        max_results: Limit results (0 = unlimited).
-    """
-    p = {}
-    if interface_id >= 0: p["interface_id"] = interface_id
-    if item_id >= 0: p["item_id"] = item_id
-    if sprite_id >= 0: p["sprite_id"] = sprite_id
-    if type >= 0: p["type"] = type
-    if text_pattern: p["text_pattern"] = text_pattern
-    if match_type != "contains": p["match_type"] = match_type
-    if case_sensitive: p["case_sensitive"] = True
-    if option_pattern: p["option_pattern"] = option_pattern
-    if visible_only: p["visible_only"] = True
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_components", **p)
-
-
-@mcp.tool()
-def is_component_valid(interface_id: int, component_id: int, sub_component_id: int = -1) -> dict:
-    """Check if a UI component exists and is valid.
-
-    Args:
-        interface_id: Interface ID.
-        component_id: Component ID within the interface.
-        sub_component_id: Sub-component ID (-1 for top-level).
-    """
-    return rpc("is_component_valid",
-               interface_id=interface_id, component_id=component_id, sub_component_id=sub_component_id)
-
-
-@mcp.tool()
-def get_component_text(interface_id: int, component_id: int) -> dict:
-    """Get the text content of a UI component. Returns {"text": str|null}."""
-    return rpc("get_component_text", interface_id=interface_id, component_id=component_id)
-
-
-@mcp.tool()
-def get_component_item(interface_id: int, component_id: int, sub_component_id: int = -1) -> dict:
-    """Get item shown in a UI component. Returns {"item_id": int, "count": int}."""
-    return rpc("get_component_item",
-               interface_id=interface_id, component_id=component_id, sub_component_id=sub_component_id)
-
-
-@mcp.tool()
-def get_component_position(interface_id: int, component_id: int) -> dict:
-    """Get screen position and size of a UI component. Returns {x, y, width, height}."""
-    return rpc("get_component_position", interface_id=interface_id, component_id=component_id)
-
-
-@mcp.tool()
-def get_component_options(interface_id: int, component_id: int) -> list:
-    """Get right-click menu options of a UI component. Returns list of option strings."""
-    return rpc("get_component_options", interface_id=interface_id, component_id=component_id)
-
-
-@mcp.tool()
-def get_component_sprite_id(interface_id: int, component_id: int) -> dict:
-    """Get the sprite ID of a UI component. Returns {"sprite_id": int} (-1 if none)."""
-    return rpc("get_component_sprite_id", interface_id=interface_id, component_id=component_id)
-
-
-@mcp.tool()
-def get_component_type(interface_id: int, component_id: int) -> dict:
-    """Get the type of a UI component. Returns {"type": int, "type_name": str}."""
-    return rpc("get_component_type", interface_id=interface_id, component_id=component_id)
-
-
-@mcp.tool()
-def get_component_children(interface_id: int, component_id: int) -> list:
-    """Get child sub-components of a UI component.
-
-    Returns list with handle, interface_id, component_id, sub_component_id,
-    type, item_id, item_count, sprite_id.
-    """
-    return rpc("get_component_children", interface_id=interface_id, component_id=component_id)
-
-
-@mcp.tool()
-def get_open_interfaces() -> list:
-    """Get all currently open interfaces. Returns [{parent_hash, interface_id}, ...]."""
-    return rpc("get_open_interfaces")
-
-
-@mcp.tool()
-def is_interface_open(interface_id: int) -> dict:
-    """Check if a specific interface is currently open. Returns {"open": bool}."""
-    return rpc("is_interface_open", interface_id=interface_id)
-
-
-# ── Inventory / Items ─────────────────────────────────────────────────
-
-
-@mcp.tool()
-def query_inventories() -> list:
-    """List all active inventories. Returns [{inventory_id, item_count, capacity}, ...]."""
-    return rpc("query_inventories")
-
-
-@mcp.tool()
-def query_inventory_items(
-    inventory_id: int = -1,
-    item_id: int = -1,
-    min_quantity: int = 0,
-    non_empty: bool = True,
-    max_results: int = 0,
-) -> list:
-    """Query items in inventories.
-
-    Returns list with handle, item_id, quantity, slot.
-
-    Args:
-        inventory_id: Filter to specific inventory (-1 = all).
-        item_id: Filter by item ID (-1 = any).
-        min_quantity: Minimum quantity filter (0 = no filter).
-        non_empty: Exclude empty slots (default true).
-        max_results: Limit results (0 = unlimited).
-    """
-    p = {}
-    if inventory_id >= 0: p["inventory_id"] = inventory_id
-    if item_id >= 0: p["item_id"] = item_id
-    if min_quantity > 0: p["min_quantity"] = min_quantity
-    if not non_empty: p["non_empty"] = False
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_inventory_items", **p)
-
-
-@mcp.tool()
-def get_inventory_item(inventory_id: int, slot: int) -> dict:
-    """Get a specific inventory item by slot. Returns {handle, item_id, quantity, slot}."""
-    return rpc("get_inventory_item", inventory_id=inventory_id, slot=slot)
-
-
-@mcp.tool()
-def get_item_vars(inventory_id: int, slot: int) -> list:
-    """Get item variables for an item in a specific slot. Returns [{var_id, value}, ...]."""
-    return rpc("get_item_vars", inventory_id=inventory_id, slot=slot)
-
-
-@mcp.tool()
-def get_item_var_value(inventory_id: int, slot: int, var_id: int) -> dict:
-    """Get a specific item variable value. Returns {"value": int}."""
-    return rpc("get_item_var_value", inventory_id=inventory_id, slot=slot, var_id=var_id)
-
-
-# ── Player Stats ──────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def get_player_stats() -> list:
-    """Get all player skill stats. Returns [{skill_id, level, boosted_level, max_level, xp}, ...]."""
-    return rpc("get_player_stats")
-
-
-@mcp.tool()
-def get_player_stat(skill_id: int) -> dict:
-    """Get a specific skill stat. Returns {skill_id, level, boosted_level, max_level, xp}."""
-    return rpc("get_player_stat", skill_id=skill_id)
-
-
-# ── Chat ──────────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def query_chat_history(message_type: int = -1, max_results: int = 50) -> list:
-    """Query chat message history.
-
-    Returns [{index, message_type, text, player_name}, ...].
-
-    Args:
-        message_type: Filter by message type (-1 = all).
-        max_results: Max messages to return (default 50).
-    """
-    p = {}
-    if message_type >= 0: p["message_type"] = message_type
-    if max_results != 50: p["max_results"] = max_results
-    return rpc("query_chat_history", **p)
-
-
-# ── Vars ──────────────────────────────────────────────────────────────
+# ── Variables (varps / varcs / obj vars) ──────────────────────────────
 
 
 @mcp.tool()
 def get_varp(var_id: int) -> dict:
-    """Get a player variable (varp) value. Returns {"value": int}."""
+    """Read a single player variable (varp)."""
     return rpc("get_varp", var_id=var_id)
 
 
 @mcp.tool()
-def get_varbit(varbit_id: int) -> dict:
-    """Get a varbit value. Returns {"value": int}."""
-    return rpc("get_varbit", varbit_id=varbit_id)
+def get_varps(var_ids: list[int]) -> list:
+    """Read multiple varps in one call."""
+    return rpc("get_varps", var_ids=var_ids)
 
 
 @mcp.tool()
 def get_varc_int(varc_id: int) -> dict:
-    """Get a client variable (varc) integer value. Returns {"value": int}."""
+    """Read a single client int variable (varc)."""
     return rpc("get_varc_int", varc_id=varc_id)
 
 
 @mcp.tool()
+def get_varcs_int(varc_ids: list[int]) -> list:
+    """Read multiple varc ints in one call."""
+    return rpc("get_varcs_int", varc_ids=varc_ids)
+
+
+@mcp.tool()
 def get_varc_string(varc_id: int) -> dict:
-    """Get a client variable (varc) string value. Returns {"value": str}."""
+    """Read a single client string variable."""
     return rpc("get_varc_string", varc_id=varc_id)
 
 
 @mcp.tool()
-def query_varbits(varbit_ids: list[int]) -> list:
-    """Get multiple varbit values at once. Returns [{varbit_id, value}, ...].
-
-    Args:
-        varbit_ids: List of varbit IDs to query.
-    """
-    return rpc("query_varbits", varbit_ids=varbit_ids)
-
-
-# ── Cache ─────────────────────────────────────────────────────────────
+def get_varcs_string(varc_ids: list[int]) -> list:
+    """Read multiple varc strings in one call."""
+    return rpc("get_varcs_string", varc_ids=varc_ids)
 
 
 @mcp.tool()
-def get_cache_file(index_id: int, archive_id: int, file_id: int = 0) -> dict:
-    """Read a file from the game cache. Returns {"data": bytes, "size": int}.
+def get_obj_vars(handle: int) -> list:
+    """Read all object variables attached to a component / inventory slot handle."""
+    return rpc("get_obj_vars", handle=handle)
 
-    Args:
-        index_id: Cache index ID.
-        archive_id: Archive ID within the index.
-        file_id: File ID within the archive (default 0).
+
+# ── Varbits (computed client-side; live server has no get_varbit RPC) ──
+#
+# Varbits are bit ranges inside a varp. The cache stores
+# varbit_id → (varp_id, lsb, msb). The live RPC no longer exposes the
+# cache, so callers supply that triple explicitly. To learn a triple, look
+# it up in a wiki/cache dump or read it from the Java side
+# (`api.getVarbit(...)` inside a bwu-api script).
+
+
+def _extract_varp_value(varp_result) -> int:
+    """Coerce a `get_varp` response into an int.
+
+    The RPC may return a bare int or a dict like {"value": N}; handle both.
     """
-    return rpc("get_cache_file", index_id=index_id, archive_id=archive_id, file_id=file_id)
+    if isinstance(varp_result, dict):
+        v = varp_result.get("value", 0)
+        return int(v) if v is not None else 0
+    if isinstance(varp_result, (int, bool)):
+        return int(varp_result)
+    return 0
+
+
+def _extract_varbit(varp_value: int, lsb: int, msb: int) -> int:
+    width = msb - lsb + 1
+    if width <= 0 or width > 31:
+        return 0
+    mask = (1 << width) - 1
+    return (varp_value >> lsb) & mask
 
 
 @mcp.tool()
-def get_cache_file_count(index_id: int, archive_id: int = 0, shift: int = 0) -> dict:
-    """Get number of files in a cache index/archive. Returns {"count": int}.
+def get_varbit_value(varp_id: int, lsb: int, msb: int) -> dict:
+    """Compute a varbit value client-side by reading its owning varp and
+    extracting bits [lsb..msb] inclusive.
 
     Args:
-        index_id: Cache index ID.
-        archive_id: Archive ID (default 0).
-        shift: Bit shift for addressing (default 0).
+        varp_id: The owning varp's id.
+        lsb:     Low bit (0-based, inclusive).
+        msb:     High bit (0-based, inclusive).
+
+    Returns: {"varp_id", "lsb", "msb", "varp_value", "value"}.
     """
-    return rpc("get_cache_file_count", index_id=index_id, archive_id=archive_id, shift=shift)
-
-
-# ── Config Type Lookups ──────────────────────────────────────────────
+    varp = _extract_varp_value(rpc("get_varp", var_id=varp_id))
+    return {
+        "varp_id":    varp_id,
+        "lsb":        lsb,
+        "msb":        msb,
+        "varp_value": varp,
+        "value":      _extract_varbit(varp, lsb, msb),
+    }
 
 
 @mcp.tool()
-def get_item_type(id: int) -> dict:
-    """Get item definition by ID. Returns name, options, price, equipment slot, stackability, etc.
+def get_varbit_values(specs: list[dict]) -> list:
+    """Batch varbit extraction. Each spec dict must contain `varp_id`,
+    `lsb`, `msb`. Reads each distinct varp once via `get_varps`, then
+    extracts the bits per spec.
 
-    Args:
-        id: Item type ID.
+    Returns a list parallel to `specs`, each entry shaped like the
+    single-shot `get_varbit_value` response.
     """
-    return rpc("get_item_type", id=id)
+    if not specs:
+        return []
+    ids = sorted({int(s["varp_id"]) for s in specs})
+    raw = rpc("get_varps", var_ids=ids)
+    by_id: dict[int, int] = {}
+    if isinstance(raw, list):
+        for entry in raw:
+            if isinstance(entry, dict):
+                vid = entry.get("var_id", entry.get("varp_id"))
+                if vid is not None:
+                    by_id[int(vid)] = _extract_varp_value(entry)
+    out = []
+    for s in specs:
+        vid = int(s["varp_id"])
+        lsb = int(s["lsb"])
+        msb = int(s["msb"])
+        varp_value = by_id.get(vid, 0)
+        out.append({
+            "varp_id":    vid,
+            "lsb":        lsb,
+            "msb":        msb,
+            "varp_value": varp_value,
+            "value":      _extract_varbit(varp_value, lsb, msb),
+        })
+    return out
+
+
+# ── Movement / Pathing ────────────────────────────────────────────────
 
 
 @mcp.tool()
-def get_npc_type(id: int) -> dict:
-    """Get NPC definition by ID. Returns name, options, combat level, transforms, etc.
-
-    Args:
-        id: NPC type ID.
-    """
-    return rpc("get_npc_type", id=id)
+def walk_to(x: int, y: int) -> dict:
+    """[UNSAFE] Walk to a local tile (minimap-style click)."""
+    return rpc("walk_to", x=x, y=y)
 
 
 @mcp.tool()
-def get_location_type(id: int) -> dict:
-    """Get location/object definition by ID. Returns name, options, size, interaction type, etc.
-
-    Args:
-        id: Location type ID.
-    """
-    return rpc("get_location_type", id=id)
+def walk_world_path(x: int, y: int, plane: int = 0) -> dict:
+    """[UNSAFE] Walk to a world tile via the path solver."""
+    return rpc("walk_world_path", x=x, y=y, plane=plane)
 
 
 @mcp.tool()
-def get_enum_type(id: int) -> dict:
-    """Get enum (key-value mapping) definition by ID. Enums map inputs to outputs (e.g. skill IDs to names).
-
-    Returns id, input/output type IDs, default values, and entries map.
-
-    Args:
-        id: Enum type ID.
-    """
-    return rpc("get_enum_type", id=id)
+def walk_cancel() -> dict:
+    """[UNSAFE] Cancel the in-flight walk request."""
+    return rpc("walk_cancel")
 
 
 @mcp.tool()
-def get_struct_type(id: int) -> dict:
-    """Get struct definition by ID. Structs are parameter bags (key-value pairs of int/string).
-
-    Returns id and params map.
-
-    Args:
-        id: Struct type ID.
-    """
-    return rpc("get_struct_type", id=id)
+def walk_status() -> dict:
+    """Current walk-request status."""
+    return rpc("walk_status")
 
 
 @mcp.tool()
-def get_sequence_type(id: int) -> dict:
-    """Get animation sequence definition by ID. Returns frame data, priority, loop info, hand items, etc.
-
-    Args:
-        id: Animation sequence (anim) ID.
-    """
-    return rpc("get_sequence_type", id=id)
+def is_reachable(x: int, y: int, plane: int = 0) -> dict:
+    """Check whether (x, y, plane) is reachable from the player's current tile."""
+    return rpc("is_reachable", x=x, y=y, plane=plane)
 
 
 @mcp.tool()
-def get_quest_type(id: int) -> dict:
-    """Get quest definition by ID. Returns name, difficulty, requirements, progress tracking vars, etc.
+def find_path(x: int, y: int) -> dict:
+    """Compute a local path to (x, y) — does not execute, just returns the route."""
+    return rpc("find_path", x=x, y=y)
+
+
+@mcp.tool()
+def find_world_path(x: int, y: int, plane: int = 0) -> dict:
+    """Compute a world path to (x, y, plane) — does not execute, just returns the route."""
+    return rpc("find_world_path", x=x, y=y, plane=plane)
+
+
+@mcp.tool()
+def region_cache_info() -> dict:
+    """Inspect the region-cache contents (for path-solver debugging)."""
+    return rpc("region_cache_info")
+
+
+@mcp.tool()
+def region_cache_clear() -> dict:
+    """[UNSAFE] Clear the region cache — forces re-fetch on next path query."""
+    return rpc("region_cache_clear")
+
+
+# ── Input ─────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def send_key(key_code: int) -> dict:
+    """[UNSAFE] Inject a keyboard event into the game window."""
+    return rpc("send_key", key_code=key_code)
+
+
+@mcp.tool()
+def send_click(x: int, y: int, button: int = 0) -> dict:
+    """[UNSAFE] Inject a mouse click at (x, y). button 0 = left, 1 = right."""
+    return rpc("send_click", x=x, y=y, button=button)
+
+
+@mcp.tool()
+def record_move_path() -> dict:
+    """[UNSAFE] Toggle/record human mouse-move path data."""
+    return rpc("record_move_path")
+
+
+# ── World map ─────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def query_world_map_elements(
+    text_pattern: Optional[str] = None,
+    max_results: int = 0,
+) -> list:
+    """Search labelled world-map elements (towns, banks, dungeons, …)."""
+    p = {}
+    if text_pattern: p["text_pattern"] = text_pattern
+    if max_results > 0: p["max_results"] = max_results
+    return rpc("query_world_map_elements", **p)
+
+
+# ── Action queue ──────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def queue_action(action_id: int, param1: int = 0, param2: int = 0, param3: int = 0) -> dict:
+    """[UNSAFE] Queue a single game action.
 
     Args:
-        id: Quest type ID.
+        action_id: Action type ID (see ActionTypes in the Java framework).
+        param1: First parameter (semantics depend on action_id).
+        param2: Second parameter.
+        param3: Third parameter.
     """
-    return rpc("get_quest_type", id=id)
+    return rpc("queue_action", action_id=action_id, param1=param1, param2=param2, param3=param3)
 
 
-# ── Action Queue (read-only) ─────────────────────────────────────────
+@mcp.tool()
+def queue_actions(actions: list[dict]) -> dict:
+    """[UNSAFE] Queue multiple game actions atomically.
+
+    Args:
+        actions: List of {action_id, param1, param2, param3} dicts.
+    """
+    return rpc("queue_actions", actions=actions)
 
 
 @mcp.tool()
 def get_action_queue_size() -> dict:
-    """Get the number of actions currently queued. Returns {"size": int}."""
+    """Pending action queue length."""
     return rpc("get_action_queue_size")
 
 
 @mcp.tool()
+def clear_action_queue() -> dict:
+    """[UNSAFE] Clear all pending actions."""
+    return rpc("clear_action_queue")
+
+
+@mcp.tool()
 def get_action_history(max_results: int = 50, action_id_filter: int = -1) -> list:
-    """Get recent action history (newest first).
-
-    Returns [{action_id, param1, param2, param3, timestamp, delta}, ...].
-
-    Args:
-        max_results: Max entries to return (default 50).
-        action_id_filter: Filter to specific action ID (-1 = all).
-    """
+    """Recent action executions, newest first."""
     p = {}
     if max_results != 50: p["max_results"] = max_results
     if action_id_filter >= 0: p["action_id_filter"] = action_id_filter
@@ -940,391 +555,205 @@ def get_action_history(max_results: int = 50, action_id_filter: int = -1) -> lis
 
 @mcp.tool()
 def get_last_action_time() -> dict:
-    """Get timestamp of the last action. Returns {"timestamp": value}."""
+    """Timestamp of the most recent action execution."""
     return rpc("get_last_action_time")
 
 
 @mcp.tool()
 def are_actions_blocked() -> dict:
-    """Check if action processing is currently blocked. Returns {"blocked": bool}."""
+    """Check whether action dispatch is currently blocked."""
     return rpc("are_actions_blocked")
-
-
-# ── Game State ────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def get_account_info() -> dict:
-    """Get account information for the current client session.
-
-    Returns: client_type (0=jagex, 1=steam), client_state, session_id,
-    ip_hash, jx_display_name (from launcher), jx_character_id,
-    display_name (in-game, null if not logged in), is_member,
-    server_index, logged_in, login_progress, login_status.
-    """
-    return rpc("get_account_info")
-
-
-@mcp.tool()
-def get_local_player() -> dict:
-    """Get the local player's info (position, name, combat level, health, animation, etc.).
-
-    Returns: server_index, name, tile_x, tile_y, plane, is_member, is_moving,
-    animation_id, stance_id, health, max_health, combat_level, overhead_text,
-    target_index, target_type.
-    """
-    return rpc("get_local_player")
-
-
-@mcp.tool()
-def get_game_cycle() -> dict:
-    """Get the current game tick counter. Returns {"cycle": int}."""
-    return rpc("get_game_cycle")
-
-
-@mcp.tool()
-def get_login_state() -> dict:
-    """Get the current login state. Returns {"state": int, "login_progress": int, "login_status": int}."""
-    return rpc("get_login_state")
-
-
-@mcp.tool()
-def get_mini_menu() -> list:
-    """Get the current right-click menu entries.
-
-    Returns list of [{option_text, action_id, type_id, item_id, param1, param2, param3}, ...].
-    """
-    return rpc("get_mini_menu")
-
-
-@mcp.tool()
-def get_grand_exchange_offers() -> list:
-    """Get all GE offer slots.
-
-    Returns list of [{slot, status, type, item_id, price, count, completed_count, completed_gold}, ...].
-    """
-    return rpc("get_grand_exchange_offers")
-
-
-@mcp.tool()
-def get_entity_overhead_text(handle: int) -> dict:
-    """Get overhead text for an entity by handle. Returns {"text": str}.
-
-    Args:
-        handle: Entity handle from a query result.
-    """
-    return rpc("get_entity_overhead_text", handle=handle)
-
-
-@mcp.tool()
-def get_world_to_screen(tile_x: int, tile_y: int) -> dict:
-    """Project a tile coordinate to screen position. Returns {"screen_x": float, "screen_y": float}.
-
-    Args:
-        tile_x: The tile X coordinate.
-        tile_y: The tile Y coordinate.
-    """
-    return rpc("get_world_to_screen", tile_x=tile_x, tile_y=tile_y)
-
-
-@mcp.tool()
-def batch_world_to_screen(tiles: list[dict]) -> dict:
-    """Batch-convert tile coordinates to screen positions in one call.
-
-    Returns {"results": [{"screen_x": float, "screen_y": float}, ...]}.
-
-    Args:
-        tiles: List of tile dicts, each with "x" and "y" integer keys.
-    """
-    return rpc("batch_world_to_screen", tiles=tiles)
-
-
-@mcp.tool()
-def get_viewport_info() -> dict:
-    """Get projection matrix, view matrix, and viewport dimensions.
-
-    Returns viewport_width, viewport_height, projection_matrix (16 floats row-major),
-    view_matrix (16 floats row-major).
-    """
-    return rpc("get_viewport_info")
-
-
-@mcp.tool()
-def get_entity_screen_positions(handles: list[int]) -> dict:
-    """Get screen positions for entities by handle.
-
-    Returns {"results": [{"handle": int, "screen_x": float, "screen_y": float, "valid": bool}, ...]}.
-
-    Args:
-        handles: List of entity handles from query results.
-    """
-    return rpc("get_entity_screen_positions", handles=handles)
-
-
-@mcp.tool()
-def get_game_window_rect() -> dict:
-    """Get game window position and size on screen for external overlay alignment.
-
-    Returns x, y, width, height (outer window) and client_x, client_y,
-    client_width, client_height (client area).
-    """
-    return rpc("get_game_window_rect")
-
-
-@mcp.tool()
-def take_screenshot() -> list:
-    """Take a screenshot of the game window. Returns the image as a PNG.
-
-    Captures the game framebuffer (1280x720) before overlay rendering.
-    The screenshot is taken on the next frame after the request.
-    """
-    import base64
-    result = rpc("take_screenshot")
-    if "error" in result:
-        return [{"type": "text", "text": f"Screenshot failed: {result['error']}"}]
-    png_bytes = result["data"]
-    if isinstance(png_bytes, bytes):
-        b64 = base64.b64encode(png_bytes).decode("ascii")
-    else:
-        b64 = base64.b64encode(bytes(png_bytes)).decode("ascii")
-    return [
-        {"type": "image", "data": b64, "mimeType": "image/png"},
-    ]
-
-
-# ── Obj Stacks ────────────────────────────────────────────────────────
-
-
-@mcp.tool()
-def query_obj_stacks(
-    radius: Optional[int] = None,
-    tile_x: int = 0, tile_y: int = 0,
-    plane: int = -1,
-    max_results: int = 0,
-) -> list:
-    """Query object stacks (piles of items on the ground).
-
-    Returns list with handle, tile_x, tile_y, tile_z.
-    Use get_obj_stack_items to get items in a stack.
-
-    Args:
-        radius: Max distance in tiles from (tile_x, tile_y).
-        tile_x: Center X tile.
-        tile_y: Center Y tile.
-        plane: Filter by plane (-1 = any).
-        max_results: Limit results (0 = unlimited).
-    """
-    p = {}
-    if radius is not None: p["radius"] = radius
-    if tile_x: p["tile_x"] = tile_x
-    if tile_y: p["tile_y"] = tile_y
-    if plane >= 0: p["plane"] = plane
-    if max_results > 0: p["max_results"] = max_results
-    return rpc("query_obj_stacks", **p)
-
-
-@mcp.tool()
-def get_obj_stack_items(handle: int) -> list:
-    """Get items in an object stack. Returns [{item_id, quantity}, ...]."""
-    return rpc("get_obj_stack_items", handle=handle)
-
-
-# ══════════════════════════════════════════════════════════════════════
-# UNSAFE TOOLS (only registered with --unsafe flag)
-# ══════════════════════════════════════════════════════════════════════
-
-
-@mcp.tool()
-def queue_action(action_id: int, param1: int = 0, param2: int = 0, param3: int = 0) -> dict:
-    """[UNSAFE] Queue a single game action.
-
-    Args:
-        action_id: The action type ID.
-        param1: First action parameter.
-        param2: Second action parameter.
-        param3: Third action parameter.
-    """
-    return rpc("queue_action", action_id=action_id, param1=param1, param2=param2, param3=param3)
-
-
-@mcp.tool()
-def queue_actions(actions: list[dict]) -> dict:
-    """[UNSAFE] Queue multiple game actions at once.
-
-    Args:
-        actions: List of action dicts, each with action_id and optional param1/param2/param3.
-    """
-    return rpc("queue_actions", actions=actions)
-
-
-@mcp.tool()
-def clear_action_queue() -> dict:
-    """[UNSAFE] Clear all queued actions."""
-    return rpc("clear_action_queue")
 
 
 @mcp.tool()
 def set_actions_blocked(blocked: bool) -> dict:
-    """[UNSAFE] Block or unblock action processing.
-
-    Args:
-        blocked: True to block actions, False to unblock.
-    """
+    """[UNSAFE] Toggle the action-dispatch block flag."""
     return rpc("set_actions_blocked", blocked=blocked)
+
+
+# ── Login / world ─────────────────────────────────────────────────────
 
 
 @mcp.tool()
 def set_world(world_id: int) -> dict:
-    """[UNSAFE] Set the target world for login/hop.
-
-    Args:
-        world_id: The world ID to switch to.
-    """
+    """[UNSAFE] Set the target world (used during login)."""
     return rpc("set_world", world_id=world_id)
 
 
 @mcp.tool()
 def change_login_state(new_state: int, old_state: int = 0) -> dict:
-    """[UNSAFE] Change the game login state.
-
-    Args:
-        new_state: The target login state.
-        old_state: Expected current state (0 = any).
-    """
-    return rpc("change_login_state", new_state=new_state, old_state=old_state)
-
-
-@mcp.tool()
-def schedule_break(duration: int) -> dict:
-    """[UNSAFE] Schedule a break (lobby/logout) for the given duration in milliseconds.
-
-    Args:
-        duration: Break duration in milliseconds.
-    """
-    return rpc("schedule_break", duration=duration)
-
-
-@mcp.tool()
-def interrupt_break() -> dict:
-    """[UNSAFE] Interrupt a currently scheduled break."""
-    return rpc("interrupt_break")
+    """[UNSAFE] Advance the login state machine."""
+    p = {"new_state": new_state}
+    if old_state != 0: p["old_state"] = old_state
+    return rpc("change_login_state", **p)
 
 
 @mcp.tool()
 def login_to_lobby() -> dict:
-    """[UNSAFE] Trigger login from the login screen to lobby. Only works when client state is 10 (login screen).
-
-    Returns ok:true on success, or an error if not on login screen, login already in progress, or account unavailable.
-    """
+    """[UNSAFE] Execute the lobby-login client script (only valid in state 10)."""
     return rpc("login_to_lobby")
 
 
 @mcp.tool()
 def get_auto_login() -> dict:
-    """Check if auto login is enabled."""
+    """Auto-login toggle state."""
     return rpc("get_auto_login")
 
 
 @mcp.tool()
 def set_auto_login(enabled: bool) -> dict:
-    """[UNSAFE] Enable or disable auto login.
-
-    Args:
-        enabled: Whether to enable auto login.
-    """
+    """[UNSAFE] Toggle auto-login."""
     return rpc("set_auto_login", enabled=enabled)
 
 
-@mcp.tool()
-def get_humanization_enabled() -> dict:
-    """Check if input humanization (mouse paths, fatigue model, break recommendations) is enabled."""
-    return rpc("get_humanization_enabled")
+# ── Token refresher (Jagex auth) ──────────────────────────────────────
 
 
 @mcp.tool()
-def set_humanization_enabled(enabled: bool) -> dict:
-    """[UNSAFE] Enable or disable input humanization (mouse path generation, fatigue/risk model, automatic break recommendations).
-
-    Humanization is disabled by default.
-
-    Args:
-        enabled: Whether to enable humanization.
-    """
-    return rpc("set_humanization_enabled", enabled=enabled)
+def get_token_refresher() -> dict:
+    """Token-refresher configuration."""
+    return rpc("get_token_refresher")
 
 
 @mcp.tool()
-def execute_script(handle: int, int_args: list[int] = [], string_args: list[str] = [],
-                   returns: list[str] = []) -> dict:
-    """[UNSAFE] Execute a client script by handle.
+def set_token_refresher(config: dict) -> dict:
+    """[UNSAFE] Update token-refresher configuration."""
+    return rpc("set_token_refresher", **config)
 
-    Get a handle first with get_script_handle, then execute it.
 
-    Args:
-        handle: Script handle (from get_script_handle).
-        int_args: Integer arguments to pass to the script.
-        string_args: String arguments to pass to the script.
-        returns: Expected return types in order - "int", "long", or "string".
-    """
-    p = {"handle": handle}
-    if int_args: p["int_args"] = int_args
-    if string_args: p["string_args"] = string_args
-    if returns: p["returns"] = returns
-    return rpc("execute_script", **p)
+@mcp.tool()
+def trigger_token_refresh() -> dict:
+    """[UNSAFE] Force an immediate token refresh."""
+    return rpc("trigger_token_refresh")
+
+
+# ── Breaks ────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def schedule_break(duration: int) -> dict:
+    """[UNSAFE] Schedule a humanization break of `duration` ms."""
+    return rpc("schedule_break", duration=duration)
+
+
+@mcp.tool()
+def interrupt_break() -> dict:
+    """[UNSAFE] Cancel any in-progress break."""
+    return rpc("interrupt_break")
+
+
+# ── Capture / stream ──────────────────────────────────────────────────
+
+
+@mcp.tool()
+def take_screenshot() -> list:
+    """Capture a PNG framebuffer (1280x720). Returns raw bytes."""
+    return rpc("take_screenshot")
+
+
+@mcp.tool()
+def start_stream() -> dict:
+    """[UNSAFE] Begin continuous JPEG frame streaming on a separate pipe."""
+    return rpc("start_stream")
+
+
+@mcp.tool()
+def stop_stream() -> dict:
+    """[UNSAFE] End frame streaming."""
+    return rpc("stop_stream")
+
+
+# ── Script execution ──────────────────────────────────────────────────
 
 
 @mcp.tool()
 def get_script_handle(script_id: int) -> dict:
-    """[UNSAFE] Get a handle to a client script for execution. Returns {"handle": int}.
-
-    Args:
-        script_id: The client script ID.
-    """
+    """[UNSAFE] Acquire a handle to a client script."""
     return rpc("get_script_handle", script_id=script_id)
 
 
 @mcp.tool()
-def destroy_script_handle(handle: int) -> dict:
-    """[UNSAFE] Destroy a script handle when done with it.
+def execute_script(
+    handle: int,
+    int_args: Optional[list[int]] = None,
+    string_args: Optional[list[str]] = None,
+    returns: Optional[list[str]] = None,
+) -> dict:
+    """[UNSAFE] Execute a script handle with the given args.
 
     Args:
-        handle: The script handle to destroy.
+        handle: Script handle from get_script_handle.
+        int_args: Int args to pass.
+        string_args: String args to pass.
+        returns: Expected return types ("int" | "long" | "string").
     """
-    return rpc("destroy_script_handle", handle=handle)
+    p = {"handle": handle}
+    if int_args:    p["int_args"] = int_args
+    if string_args: p["string_args"] = string_args
+    if returns:     p["returns"] = returns
+    return rpc("execute_script", **p)
 
 
 @mcp.tool()
-def fire_key_trigger(interface_id: int, component_id: int, input: str) -> dict:
-    """[UNSAFE] Fire a key trigger on a UI component.
+def destroy_script_handle(handle: int) -> dict:
+    """[UNSAFE] Release a script handle."""
+    return rpc("destroy_script_handle", handle=handle)
 
-    Args:
-        interface_id: Interface ID of the component.
-        component_id: Component ID within the interface.
-        input: The key input string to fire.
-    """
-    return rpc("fire_key_trigger", interface_id=interface_id, component_id=component_id, input=input)
+
+# ── Debug pub/sub ─────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def debug_subscribe(channel: str) -> dict:
+    """[UNSAFE] Subscribe to a debug pub/sub channel."""
+    return rpc("_debug.subscribe", channel=channel)
+
+
+@mcp.tool()
+def debug_unsubscribe(channel: str) -> dict:
+    """[UNSAFE] Unsubscribe from a debug pub/sub channel."""
+    return rpc("_debug.unsubscribe", channel=channel)
+
+
+@mcp.tool()
+def debug_publish(channel: str, payload: Optional[dict] = None) -> dict:
+    """[UNSAFE] Publish a payload on a debug pub/sub channel."""
+    p = {"channel": channel}
+    if payload: p["payload"] = payload
+    return rpc("_debug.publish", **p)
+
+
+# ── Agent / license ───────────────────────────────────────────────────
+
+
+@mcp.tool()
+def agent_set_license(license_key: str) -> dict:
+    """[UNSAFE] Set the BotWithUs agent license key."""
+    return rpc("agent.set_license", license_key=license_key)
+
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Tool safety classification
+# Tool safety classification — methods that mutate game state
 # ══════════════════════════════════════════════════════════════════════
 
 UNSAFE_TOOLS = [
-    "queue_action",
-    "queue_actions",
-    "clear_action_queue",
-    "set_actions_blocked",
-    "set_world",
-    "change_login_state",
-    "login_to_lobby",
-    "set_auto_login",
-    "set_humanization_enabled",
-    "schedule_break",
-    "interrupt_break",
-    "execute_script",
-    "get_script_handle",
-    "destroy_script_handle",
-    "fire_key_trigger",
+    # action queue
+    "queue_action", "queue_actions", "clear_action_queue", "set_actions_blocked",
+    # movement / input
+    "walk_to", "walk_world_path", "walk_cancel",
+    "send_key", "send_click", "record_move_path",
+    # login / world / tokens
+    "set_world", "change_login_state", "login_to_lobby", "set_auto_login",
+    "set_token_refresher", "trigger_token_refresh",
+    # breaks / scripts
+    "schedule_break", "interrupt_break",
+    "execute_script", "get_script_handle", "destroy_script_handle",
+    # streaming / region cache
+    "start_stream", "stop_stream", "region_cache_clear",
+    # debug pub/sub + agent
+    "debug_subscribe", "debug_unsubscribe", "debug_publish",
+    "agent_set_license",
 ]
 
 
