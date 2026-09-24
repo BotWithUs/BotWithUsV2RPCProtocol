@@ -416,61 +416,13 @@ def get_varbit_values(specs: list[dict]) -> list:
 # ── Movement / Pathing ────────────────────────────────────────────────
 
 
-@mcp.tool()
-def walk_to(x: int, y: int) -> dict:
-    """[UNSAFE] Walk to a local tile (minimap-style click)."""
-    return rpc("walk_to", x=x, y=y)
 
 
-@mcp.tool()
-def walk_world_path(x: int, y: int, plane: int = 0) -> dict:
-    """[UNSAFE] Walk to a world tile via the path solver."""
-    return rpc("walk_world_path", x=x, y=y, plane=plane)
 
 
-@mcp.tool()
-def walk_cancel() -> dict:
-    """[UNSAFE] Cancel the in-flight walk request."""
-    return rpc("walk_cancel")
 
 
-@mcp.tool()
-def walk_status() -> dict:
-    """Current walk-request status."""
-    return rpc("walk_status")
 
-
-@mcp.tool()
-def is_reachable(x: int, y: int, plane: int = 0) -> dict:
-    """Check whether (x, y, plane) is reachable from the player's current tile."""
-    return rpc("is_reachable", x=x, y=y, plane=plane)
-
-
-@mcp.tool()
-def find_path(x: int, y: int) -> dict:
-    """Compute a local path to (x, y) — does not execute, just returns the route."""
-    return rpc("find_path", x=x, y=y)
-
-
-@mcp.tool()
-def find_world_path(x: int, y: int, plane: int = 0) -> dict:
-    """Compute a world path to (x, y, plane) — does not execute, just returns the route."""
-    return rpc("find_world_path", x=x, y=y, plane=plane)
-
-
-@mcp.tool()
-def region_cache_info() -> dict:
-    """Inspect the region-cache contents (for path-solver debugging)."""
-    return rpc("region_cache_info")
-
-
-@mcp.tool()
-def region_cache_clear() -> dict:
-    """[UNSAFE] Clear the region cache — forces re-fetch on next path query."""
-    return rpc("region_cache_clear")
-
-
-# ── Input ─────────────────────────────────────────────────────────────
 
 
 @mcp.tool()
@@ -755,6 +707,180 @@ UNSAFE_TOOLS = [
     "debug_subscribe", "debug_unsubscribe", "debug_publish",
     "agent_set_license",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Scene / session reads the agent registers but this wrapper layer had no tool
+# for. Everything here is a real entry in nxt-library's handler table.
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def query_spot_anims(anim_id: int = -1, plane: int = -1, max_results: int = 0) -> list:
+    """Query active spot animations (graphic effects at world tiles).
+
+    Returns a list of {handle, anim_id, tile_x, tile_y, tile_z}.
+
+    Args:
+        anim_id:     Filter by animation id (-1 = any).
+        plane:       Filter by plane (-1 = any).
+        max_results: Limit results (0 = unlimited).
+    """
+    p = {}
+    if anim_id >= 0:
+        p["anim_id"] = anim_id
+    if plane >= 0:
+        p["plane"] = plane
+    if max_results > 0:
+        p["max_results"] = max_results
+    return rpc("query_spot_anims", **p)
+
+
+@mcp.tool()
+def login_to_game() -> dict:
+    """[UNSAFE] Execute the world-login client script (only valid from the lobby)."""
+    return rpc("login_to_game")
+
+
+@mcp.tool()
+def client_count() -> dict:
+    """Number of clients currently attached to the pipe server."""
+    return rpc("rpc.client_count")
+
+
+@mcp.tool()
+def click_stats() -> dict:
+    """Humanizer click-injection counters (pending, injected, collided, raced, ...)."""
+    return rpc("click_stats")
+
+
+@mcp.tool()
+def move_stats() -> dict:
+    """Humanizer cursor-movement counters and the last known cursor position."""
+    return rpc("move_stats")
+
+
+# ---------------------------------------------------------------------------
+# Overlay / debug draw. The agent renders these in the game window, which is
+# the only way to show something on screen while take_screenshot is a stub.
+# Every highlight shares one parameter vocabulary; `key` names a drawing so a
+# later call replaces it instead of stacking, and `ttl_ms` expires it.
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def highlight_tile(x: int, y: int, plane: int = -1, color: int = -1,
+                   thickness: int = -1, ttl_ms: int = -1, key: str = "") -> dict:
+    """Outline one world tile. Plane is part of the auto-generated key."""
+    p = {"x": x, "y": y}
+    if plane >= 0:
+        p["plane"] = plane
+    if color >= 0:
+        p["color"] = color
+    if thickness >= 0:
+        p["thickness"] = thickness
+    if ttl_ms >= 0:
+        p["ttl_ms"] = ttl_ms
+    if key:
+        p["key"] = key
+    return rpc("highlight_tile", **p)
+
+
+@mcp.tool()
+def highlight_area(x: int, y: int, w: int, h: int, plane: int = -1, color: int = -1,
+                   thickness: int = -1, ttl_ms: int = -1, key: str = "") -> dict:
+    """Outline a w by h block of world tiles anchored at (x, y)."""
+    p = {"x": x, "y": y, "w": w, "h": h}
+    if plane >= 0:
+        p["plane"] = plane
+    if color >= 0:
+        p["color"] = color
+    if thickness >= 0:
+        p["thickness"] = thickness
+    if ttl_ms >= 0:
+        p["ttl_ms"] = ttl_ms
+    if key:
+        p["key"] = key
+    return rpc("highlight_area", **p)
+
+
+@mcp.tool()
+def highlight_entity(npc: int = -1, player: int = -1, this_player: bool = False,
+                     color: int = -1, thickness: int = -1, ttl_ms: int = -1,
+                     key: str = "") -> dict:
+    """Outline an entity. Give exactly one of npc, player or this_player.
+
+    Args:
+        npc:         Server index of an npc.
+        player:      Server index of a player.
+        this_player: Highlight the local player instead.
+    """
+    p = {}
+    if npc >= 0:
+        p["npc"] = npc
+    if player >= 0:
+        p["player"] = player
+    if this_player:
+        p["self"] = True
+    if color >= 0:
+        p["color"] = color
+    if thickness >= 0:
+        p["thickness"] = thickness
+    if ttl_ms >= 0:
+        p["ttl_ms"] = ttl_ms
+    if key:
+        p["key"] = key
+    return rpc("highlight_entity", **p)
+
+
+@mcp.tool()
+def highlight_component(iface: int, comp: int, color: int = -1, thickness: int = -1,
+                        ttl_ms: int = -1, key: str = "") -> dict:
+    """Outline an interface component."""
+    p = {"iface": iface, "comp": comp}
+    if color >= 0:
+        p["color"] = color
+    if thickness >= 0:
+        p["thickness"] = thickness
+    if ttl_ms >= 0:
+        p["ttl_ms"] = ttl_ms
+    if key:
+        p["key"] = key
+    return rpc("highlight_component", **p)
+
+
+@mcp.tool()
+def debug_draw_enable(enabled: bool = True) -> dict:
+    """Turn the overlay renderer on or off."""
+    return rpc("debug_draw_enable", enabled=enabled)
+
+
+@mcp.tool()
+def debug_draw_clear(key: str) -> dict:
+    """Remove one named drawing."""
+    return rpc("debug_draw_clear", key=key)
+
+
+@mcp.tool()
+def debug_draw_clear_all(scope: str = "") -> dict:
+    """Remove every drawing. `scope` may narrow it to this client's own ("mine")."""
+    return rpc("debug_draw_clear_all", **({"scope": scope} if scope else {}))
+
+
+@mcp.tool()
+def debug_draw_list(offset: int = 0, max_results: int = 0) -> dict:
+    """List the drawings currently registered."""
+    p = {}
+    if offset:
+        p["offset"] = offset
+    if max_results > 0:
+        p["max_results"] = max_results
+    return rpc("debug_draw_list", **p)
+
+
+@mcp.tool()
+def debug_draw_stats() -> dict:
+    """Overlay renderer counters: backend readiness, frames, drops, present timings."""
+    return rpc("debug_draw_stats")
+
 
 
 def main():
